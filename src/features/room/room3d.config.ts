@@ -105,7 +105,7 @@ export const room3d = {
   plushies: {
     // Posiciones globales; el peluche del sofá se apoya en el cojín medido del modelo nuevo.
     wall: { model: 'plushies/mikako_plush', position: [-3.65, 1.26, 0.001], rotation: [0, Math.PI / 2, 0], scale: [.49, .49, .49], label: 'Peluche de Mikako en la pared' },
-    sofa: { model: 'plushies/melody_plush', position: [-2.6 + melodyCouch.seatDepth, melodyCouch.seatHeight, -1.1 - melodyCouch.plushSide], rotation: [0, Math.PI / 2, 0], scale: [.57, .57, .57], label: 'Peluche de My Melody en el sofá' },
+    sofa: { model: 'plushies/melody_plush', position: [-2.8 + melodyCouch.seatDepth, melodyCouch.seatHeight, -1.1 - melodyCouch.plushSide], rotation: [0, Math.PI / 2, 0], scale: [.57, .57, .57], label: 'Peluche de My Melody en el sofá' },
     shelfLeft: { model: 'plushies/mikako_plush', position: [.68, 2.63, -2.35], rotation: [0, 1, 0], scale: [.58, .58, .58], label: 'Peluche de Mikako junto al espejo' },
     shelfRight: { model: 'plushies/melody_plush', position: [2.26, 2.63, -2.35], rotation: [0, 0, 0], scale: [.52, .52, .52], label: 'Peluche de My Melody arriba del estante' },
   } satisfies Record<string, RoomPlushConfig>,
