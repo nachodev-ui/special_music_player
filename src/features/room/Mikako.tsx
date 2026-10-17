@@ -337,9 +337,9 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
       }
       const turntablePress = createTurntablePress(model, restClip, settings.scale, yawOffset);
       let chairFailed = false;
-      const prepareChairClip = (): AnimationClip | null => {
+      const prepareChairClip = (reversed = false): AnimationClip | null => {
         try {
-          const clip = createDeskChairClip(model, restClip, selected.hip, settings.scale, yawOffset, true);
+          const clip = createDeskChairClip(model, restClip, selected.hip, settings.scale, yawOffset, true, reversed);
           if (clip) return clip;
         } catch (error) {
           console.warn('[DBG-ROOM] silla de escritorio no disponible:', error instanceof Error ? error.message : String(error));
@@ -532,11 +532,11 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           placement.current.rotation.y = room3d.mikako.sitYaw;
         }
         if (placement.current && chairAction && chairClip) {
-          placement.current.position.copy(chairRoot(chairAction.time / chairClip.duration));
+          placement.current.position.copy(chairRoot(chairAction.time / chairClip.duration, motion === 'desk-rise'));
           placement.current.rotation.y = DESK_CHAIR.facingYaw;
         }
         if (chairGroup?.current) chairGroup.current.position.z = CHAIR_POSITION[2] +
-          (chairAction && chairClip ? chairSlide(chairAction.time / chairClip.duration) : 0);
+          (chairAction && chairClip ? chairSlide(chairAction.time / chairClip.duration, motion === 'desk-rise') : 0);
         const occupied = seatRequested || motion === 'sit' || motion === 'rise' || motion === 'recline' || motion === 'unrecline';
         if (collider.current) collider.current.raycast = occupied || chairAction ? noRaycast : Mesh.prototype.raycast;
         if (occupied !== lastOccupied) { lastOccupied = occupied; latest.current.onCouchOccupied?.(occupied); }
@@ -580,7 +580,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           chairClip = prepareChairClip();
           if (chairClip) {
             actions['desk-sit'] = mixer.clipAction(chairClip);
-            actions['desk-rise'] = mixer.clipAction(chairClip.clone()).setEffectiveTimeScale(-1);
+            actions['desk-rise'] = mixer.clipAction(prepareChairClip(true) ?? chairClip.clone()).setEffectiveTimeScale(-1);
             for (const name of ['desk-sit', 'desk-rise'] as const) {
               names.push(name);
               actionFor(name).setLoop(LoopOnce, Infinity).setEffectiveWeight(0);
