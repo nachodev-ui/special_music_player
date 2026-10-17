@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 import { createPortal, useFrame, useThree } from '@react-three/fiber';
 import { Outlines, useGLTF } from '@react-three/drei';
 import { AnimationClip, AnimationMixer, Box3, Group, LoopOnce, LoopRepeat, MathUtils, Mesh, MeshToonMaterial, Quaternion, Vector3, type AnimationAction, type Bone, type MeshStandardMaterial, type Object3D } from 'three';
@@ -7,7 +7,7 @@ import { Highlight, Palette, ToonRamp } from './RoomModel';
 import { room3d, roomAsset } from './room3d.config';
 import { COUCH_RECLINE, couchPhase, couchApproachPosition, couchRootPosition, createReclineClip, type CouchBounds, type CouchRequest } from './mikakoRecline';
 import { createTurntablePress, TURNTABLE_CONTACT_TIME, TURNTABLE_PRESS, type TurntableApproach } from './mikakoTurntable';
-import { DESK_CHAIR, chairEntry, chairRoot, createDeskChairClip } from './mikakoDeskChair';
+import { CHAIR_POSITION, DESK_CHAIR, chairEntry, chairRoot, chairSlide, createDeskChairClip } from './mikakoDeskChair';
 
 const noRaycast = () => {};
 let welcomeAttempted = false;
@@ -125,11 +125,12 @@ function loadClip(name: string): Promise<AnimationClip> {
   return pending;
 }
 
-export function Mikako({ outfit, reduced, taps, playing, active = true, destination = null, couchBounds = null, couchRequest = null, onCouchOccupied, onTurntableReady, onChairReady }: {
+export function Mikako({ outfit, reduced, taps, playing, active = true, destination = null, couchBounds = null, couchRequest = null, onCouchOccupied, onTurntableReady, onChairReady, chairGroup }: {
   outfit: string; reduced: boolean; taps: number; playing: boolean; active?: boolean; destination?: WalkDestination | null;
   couchBounds?: CouchBounds | null; couchRequest?: CouchRequest | null; onCouchOccupied?: (occupied: boolean) => void;
   onTurntableReady?: (approach: TurntableApproach | null) => void;
   onChairReady?: (sit: (() => void) | null) => void;
+  chairGroup?: RefObject<Group | null>;
 }) {
   const selected = room3d.mikako.outfits.find(item => item.id === outfit) ?? room3d.mikako.outfits[0];
   const isGingham = selected.id === 'cuadros';
@@ -335,25 +336,24 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
         console.warn('[DBG-ROOM] recostarse no disponible:', error instanceof Error ? error.message : String(error));
       }
       const turntablePress = createTurntablePress(model, restClip, settings.scale, yawOffset);
-      const prepareChairClip = (fromCurrentPose = false): AnimationClip | null => {
+      let chairFailed = false;
+      const prepareChairClip = (): AnimationClip | null => {
         try {
-          return createDeskChairClip(model, restClip, selected.hip, settings.scale, yawOffset, fromCurrentPose);
+          const clip = createDeskChairClip(model, restClip, selected.hip, settings.scale, yawOffset, true);
+          if (clip) return clip;
         } catch (error) {
           console.warn('[DBG-ROOM] silla de escritorio no disponible:', error instanceof Error ? error.message : String(error));
-          chairReady.current?.(null);
-          return null;
         }
+        chairFailed = true;
+        chairReady.current?.(null);
+        return null;
       };
-      let chairClip = prepareChairClip();
+      let chairClip: AnimationClip | null = null;
       const mixer = new AnimationMixer(model);
       // Separate actions allow blending between two times of the same clip.
       const actions: Partial<Record<Motion, AnimationAction>> & { idle: AnimationAction } = {
         idle: mixer.clipAction(idleClip ?? restClip.clone()),
         press: mixer.clipAction(turntablePress.clip),
-        ...(chairClip ? {
-          'desk-sit': mixer.clipAction(chairClip),
-          'desk-rise': mixer.clipAction(chairClip.clone()).setEffectiveTimeScale(-1),
-        } : {}),
         ...(waveClip ? { wave: mixer.clipAction(waveClip) } : {}),
         ...(reclineClip ? { recline: mixer.clipAction(reclineClip), unrecline: mixer.clipAction(reclineClip.clone()).setEffectiveTimeScale(-1) } : {}),
         ...(sitClip ? { sit: mixer.clipAction(sitClip), rise: mixer.clipAction(sitClip.clone()) } : {}),
@@ -535,6 +535,8 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           placement.current.position.copy(chairRoot(chairAction.time / chairClip.duration));
           placement.current.rotation.y = DESK_CHAIR.facingYaw;
         }
+        if (chairGroup?.current) chairGroup.current.position.z = CHAIR_POSITION[2] +
+          (chairAction && chairClip ? chairSlide(chairAction.time / chairClip.duration) : 0);
         const occupied = seatRequested || motion === 'sit' || motion === 'rise' || motion === 'recline' || motion === 'unrecline';
         if (collider.current) collider.current.raycast = occupied || chairAction ? noRaycast : Mesh.prototype.raycast;
         if (occupied !== lastOccupied) { lastOccupied = occupied; latest.current.onCouchOccupied?.(occupied); }
@@ -574,12 +576,23 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
       };
       const transition = (next: Motion, time: number) => {
         // Preparar antes de detener acciones: si falla, volver a reposo sin bloquear el movimiento.
-        const nextChairClip = next === 'desk-sit' && chairClip ? prepareChairClip(true) : null;
-        if (next === 'desk-sit' && !nextChairClip) {
-          chairClip = null;
+        if (next === 'desk-sit' && !chairClip && !chairFailed) {
+          chairClip = prepareChairClip();
+          if (chairClip) {
+            actions['desk-sit'] = mixer.clipAction(chairClip);
+            actions['desk-rise'] = mixer.clipAction(chairClip.clone()).setEffectiveTimeScale(-1);
+            for (const name of ['desk-sit', 'desk-rise'] as const) {
+              names.push(name);
+              actionFor(name).setLoop(LoopOnce, Infinity).setEffectiveWeight(0);
+              actionFor(name).clampWhenFinished = true;
+            }
+          }
+        }
+        if (next === 'desk-sit' && !chairClip) {
           chairRequested = false;
           next = 'idle';
           time = 0;
+          if (chairGroup?.current) chairGroup.current.position.z = CHAIR_POSITION[2];
         }
         const wasRunning = running();
         const reversingCouch = (motion === 'recline' && next === 'unrecline') ||
@@ -607,16 +620,8 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
             actionFor(name).setEffectiveWeight(0);
           }
         }
-        if (next === 'desk-sit' && chairClip && nextChairClip) {
-          actionFor('desk-sit').stop(); actionFor('desk-rise').stop();
-          mixer.uncacheAction(chairClip); mixer.uncacheAction(actionFor('desk-rise').getClip());
-          chairClip = nextChairClip;
-          actions['desk-sit'] = mixer.clipAction(chairClip);
-          actions['desk-rise'] = mixer.clipAction(chairClip.clone()).setEffectiveTimeScale(-1);
-          for (const name of ['desk-sit', 'desk-rise'] as const) {
-            actionFor(name).setLoop(LoopOnce, Infinity); actionFor(name).clampWhenFinished = true;
-          }
-        }
+        if (next !== 'desk-sit' && next !== 'desk-rise' && chairGroup?.current)
+          chairGroup.current.position.z = CHAIR_POSITION[2];
         motion = next;
         actionFor(next).reset().setEffectiveWeight(weights[next]).play();
         if (next === 'desk-rise') actionFor(next).setEffectiveTimeScale(-1);
@@ -673,7 +678,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           return;
         }
         if (motion === 'rise' && !actionFor('rise').paused) return;
-        if (chairRequested && chairClip && route.length === 0) {
+        if (chairRequested && !chairFailed && route.length === 0) {
           const turn = Math.atan2(Math.sin(DESK_CHAIR.facingYaw - yaw), Math.cos(DESK_CHAIR.facingYaw - yaw));
           if (Math.abs(turn) > DESK_CHAIR.facingTolerance && walkClip && !latest.current.reduced) {
             if (!isWalking(motion) || actionFor(motion).paused) transition('walk', 0);
@@ -763,7 +768,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
       };
       current = {
         chair: () => {
-          if (!chairClip || !latest.current.active || chairRequested || seatRequested || route.length || blend ||
+          if (chairFailed || !latest.current.active || chairRequested || seatRequested || route.length || blend ||
             motion !== 'idle' && motion !== 'dance') return;
           const entry = chairEntry();
           const path = walkingPath(position, [entry[0], entry[2]]);
@@ -994,6 +999,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           cancelPress();
           turntableReady.current?.(null);
           chairReady.current?.(null);
+          if (chairGroup?.current) chairGroup.current.position.z = CHAIR_POSITION[2];
           cancelFrame();
           restoreSeatedPose();
           footSupport?.restore();
@@ -1032,7 +1038,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
         finally { debugFlags('estado/fin', true); }
       };
       playback.current = current;
-      chairReady.current?.(chairClip ? current.chair : null);
+      chairReady.current?.(current.chair);
       turntableReady.current?.(turntablePress.approach);
       current.sync();
       if (pendingDestination.current) current.walk(pendingDestination.current);
@@ -1051,7 +1057,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
       current?.dispose();
       if (playback.current === current) playback.current = null;
     };
-  }, [model, invalidate, selected, settings, hitCenter, isGingham, couchBounds, yawOffset]);
+  }, [model, invalidate, selected, settings, hitCenter, isGingham, couchBounds, yawOffset, chairGroup]);
 
   useLayoutEffect(() => {
     // Include the outline children: only the simple collider is interactive.

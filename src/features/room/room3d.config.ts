@@ -1,6 +1,12 @@
 // All transforms are in metres. GLBs are centred on X/Z, grounded at Y=0,
 // and fitted uniformly inside size before applying this object's transform.
 export type Vec3 = [number, number, number];
+// Altura de la lámpara anterior: caja Y=[.01, 2.718], escala 1.
+export const LAMP_HEIGHT = 2.708;
+export const LAMP_UPRIGHT_ROTATION = Math.PI / 2;
+export const LAMP_LIGHT_HEIGHT_FRACTION = 0.8;
+export const LAMP_UNIFORM_SCALE = LAMP_HEIGHT / 1.182;
+
 export interface RoomObjectConfig {
   model: string; position: Vec3; rotation: Vec3; scale: Vec3; size: Vec3;
   preserveTextures?: boolean;
@@ -74,7 +80,11 @@ export const room3d = {
       ...object('models/gokinjo_mangas', [1.47, 2.63, -2.35], [.4, .46, .23], 'surface', [0, Math.PI / -10.9, 0]),
       preserveTextures: true,
     },
-    lamp: object('lamp', [3.45, 0, -2.4], [.85, 2.75, .85], 'accent'),
+    lamp: {
+      ...object('models/lamp', [3.45, 0, -2.4], [.299644, 1.182281, .297233], 'accent'),
+      scale: [LAMP_UNIFORM_SCALE, LAMP_UNIFORM_SCALE, LAMP_UNIFORM_SCALE] as Vec3,
+      preserveTextures: true,
+    },
     plant: {
       // Face the bunny (-Z) into the room (+X); clear the wardrobe and rug.
       ...object('models/plant', [-3, 0, 0.8], [.694, 1, .572], 'leaf', [0, -Math.PI / 2, 0]),
@@ -161,7 +171,7 @@ export const room3d = {
   albums: { columns: 3, start: [-.82, 2.14, .4] as Vec3, spacing: [.82, .99] as [number, number], size: .64 },
   pagePrevious: { position: [-.95, .38, .4] as Vec3 },
   pageNext: { position: [.95, .38, .4] as Vec3 },
-  lampLight: { position: [3.45, 2.3, -2.4] as Vec3 },
+  lampLight: { position: [3.45, LAMP_HEIGHT * LAMP_LIGHT_HEIGHT_FRACTION, -2.4] as Vec3 },
   sun: { position: [-3, 8, 5] as Vec3 },
   pixelRatio: [1, 1.5] as [number, number],
 };

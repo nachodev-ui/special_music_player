@@ -1,12 +1,12 @@
 import { Component, Suspense, createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { Box3, Vector2, Vector3, Raycaster, BufferGeometry, CanvasTexture, CircleGeometry, CylinderGeometry, RingGeometry, MeshBasicMaterial, Float32BufferAttribute, Group, LinearMipmapLinearFilter, MathUtils, Mesh, MeshStandardMaterial, NoToneMapping, OrthographicCamera, PointLight, SRGBColorSpace, Shape as ShapePath, type Texture } from 'three';
+import { Box3, Vector2, Vector3, Raycaster, BufferGeometry, CanvasTexture, CircleGeometry, CylinderGeometry, RingGeometry, MeshBasicMaterial, Float32BufferAttribute, FrontSide, Group, LinearMipmapLinearFilter, MathUtils, Mesh, MeshStandardMaterial, NoToneMapping, OrthographicCamera, PointLight, SRGBColorSpace, Shape as ShapePath, type Texture } from 'three';
 import { RoundedBox, useGLTF, useTexture } from '@react-three/drei';
 import type { Track } from '../../../shared/contracts';
 import type { usePlayer } from '../player/usePlayer';
 import type { DayPhase, RoomWeather } from './useRoomEnvironment';
 import { Box, Highlight, Outline, Palette, RoomModel, Shape, Toon, ToonRamp, makeToonRamp } from './RoomModel';
-import { melodyCouch, room3d, roomAsset, type RoomObjectConfig, type RoomPalette, type RoomPosterConfig, type Vec3 } from './room3d.config';
+import { LAMP_UPRIGHT_ROTATION, melodyCouch, room3d, roomAsset, type RoomObjectConfig, type RoomPalette, type RoomPosterConfig, type Vec3 } from './room3d.config';
 import { roomPhotoAssignments, roomPhotoAsset, type RoomPhotoSlot } from './roomPhotos.config';
 import { useCoverTexture } from './roomTextures';
 import { Mikako, type WalkDestination } from './Mikako';
@@ -338,7 +338,7 @@ function Bow({ position, size = .16 }: { position: Vec3; size?: number }) {
   </group>;
 }
 function RoomPrint({ kind, position, size, rotation = [0, 0, 0], photoSlot }: {
-  kind: 'collage' | 'cover' | 'rug' | 'books'; position: Vec3; size: [number, number]; rotation?: Vec3; photoSlot?: RoomPhotoSlot;
+  kind: 'collage' | 'cover' | 'books'; position: Vec3; size: [number, number]; rotation?: Vec3; photoSlot?: RoomPhotoSlot;
 }) {
   const palette = useContext(Palette);
   const ramp = useContext(ToonRamp);
@@ -358,15 +358,7 @@ function RoomPrint({ kind, position, size, rotation = [0, 0, 0], photoSlot }: {
       ctx.fillStyle = color; ctx.fillRect(x, y, pw, ph);
       ctx.strokeStyle = palette.ink; ctx.lineWidth = 2; ctx.strokeRect(x + 8, y + 8, pw - 16, ph - 16);
     };
-    if (kind === 'rug') {
-      ctx.fillStyle = palette.rose; ctx.beginPath(); ctx.roundRect(15, 15, w - 30, h - 30, 150); ctx.fill();
-      ctx.fillStyle = palette.surface; ctx.beginPath(); ctx.roundRect(38, 38, w - 76, h - 76, 135); ctx.fill();
-      ctx.strokeStyle = palette.rose; ctx.lineWidth = 4; ctx.setLineDash([5, 12]); ctx.stroke(); ctx.setLineDash([]);
-      for (let y = 95; y < h - 60; y += 63) for (let x = 100; x < w - 60; x += 66) {
-        ctx.fillStyle = palette.soft; ctx.beginPath(); ctx.arc(x + (Math.round(y / 63) % 2) * 14, y, 7, 0, Math.PI * 2); ctx.fill();
-      }
-      heart(135, 136, 32, palette.rose); heart(w - 135, h - 136, 32, palette.rose);
-    } else if (kind === 'books') {
+    if (kind === 'books') {
       ctx.fillStyle = palette.wood; ctx.fillRect(0, 0, w, h);
       const colors = [palette.surface, palette.soft, palette.rose, '#adb5a0', '#d6b48e'];
       for (let i = 0; i < 34; i++) {
@@ -477,8 +469,29 @@ function RoomPrint({ kind, position, size, rotation = [0, 0, 0], photoSlot }: {
   }, [texture, kind, photoSlot, size[0], size[1], invalidate]);
   useEffect(() => () => texture?.dispose(), [texture]);
   return <mesh position={position} rotation={rotation} receiveShadow>
-    <planeGeometry args={size} /><meshToonMaterial map={texture} color={palette.surface} transparent={kind === 'rug'} alphaTest={kind === 'rug' ? .1 : 0} gradientMap={ramp} />
+    <planeGeometry args={size} /><meshToonMaterial map={texture} color={palette.surface} gradientMap={ramp} />
   </mesh>;
+}
+const RUG_DIAMETER = 3.65; // Lado menor de la alfombra anterior (4.5 × 3.65).
+const RUG_YAW = Math.atan2(4.1, 3.72); // Hoja hacia la esquina trasera (-4, -3).
+const RUG_HEIGHT = .026 + .002;
+function StrawberryRug() {
+  const { gl, invalidate } = useThree();
+  const texture = useTexture(import.meta.env.BASE_URL + 'assets/room3d/rug_strawberry.png');
+  useEffect(() => {
+    texture.colorSpace = SRGBColorSpace;
+    texture.generateMipmaps = true;
+    texture.minFilter = LinearMipmapLinearFilter;
+    texture.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
+    texture.needsUpdate = true;
+    invalidate();
+  }, [texture, gl, invalidate]);
+  return <group position={[.1, RUG_HEIGHT, .72]} rotation={[0, RUG_YAW, 0]}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow castShadow={false}>
+      <planeGeometry args={[RUG_DIAMETER, RUG_DIAMETER]} />
+      <meshStandardMaterial map={texture} transparent alphaTest={.5} side={FrontSide} />
+    </mesh>
+  </group>;
 }
 function RoomFloor() {
   const palette = useContext(Palette);
@@ -488,7 +501,7 @@ function RoomFloor() {
       <mesh position={[-3.75 + i * .5, .002, 0]} receiveShadow><boxGeometry args={[.492, .012, 6]} /><Toon color={i % 3 === 0 ? palette.soft : palette.wood} /></mesh>
       {[-1.7, .3, 2.25].map(z => <mesh key={z} position={[-3.75 + i * .5, .012, z + (i % 2 ? -.35 : 0)]}><boxGeometry args={[.49, .002, .009]} /><Toon color={palette.brass} /></mesh>)}
     </group>)}
-    <RoomPrint kind="rug" position={[.1, .026, .72]} rotation={[-Math.PI / 2, 0, 0]} size={[4.5, 3.65]} />
+    <StrawberryRug />
   </group>;
 }
 function RoomWalls() {
@@ -580,18 +593,42 @@ function CollectionRack() {
     <Bow position={[-1.27, 1.38, .27]} size={.14} />
   </group>;
 }
-function PleatedLamp({ lit, shadeRef }: { lit: boolean; shadeRef: RefObject<Group | null> }) {
-  const palette = useContext(Palette);
-  return <group>
-    <Shape position={[0, .07, 0]} color={palette.brass}><cylinderGeometry args={[.28, .37, .12, 24]} /></Shape>
-    <Rod position={[0, 1.2, 0]} length={2.3} radius={.032} color={palette.brass} />
-    <Bead position={[0, 2.16, 0]} scale={[.11, .16, .11]} color={palette.rose} />
-    <group ref={shadeRef}>{Array.from({ length: 16 }, (_, i) => <mesh key={i} position={[0, 2.43, 0]} castShadow>
-      <cylinderGeometry args={[.23, .43, .55, 1, 1, true, i * Math.PI / 8, Math.PI / 8]} />
-      <Toon color={i % 2 ? palette.soft : palette.surface} lit={lit} />
-    </mesh>)}</group>
-    {[2.16, 2.7].map((y, i) => <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[i ? .23 : .43, .018, 6, 32]} /><Toon color={palette.rose} /></mesh>)}
-    <Bow position={[0, 2.07, .09]} size={.16} />
+function LampModel({ shadeRef }: { shadeRef: RefObject<Group | null> }) {
+  const { scene: original } = useGLTF(roomAsset(room3d.objects.lamp.model));
+  const invalidate = useThree(state => state.invalidate);
+  const { scene, center, size, materials } = useMemo(() => {
+    const scene = original.clone(true);
+    // El GLB incluye una conversión en node_0: sustituirla evita girarlo dos veces.
+    const axisNode = scene.getObjectByName('node_0');
+    if (axisNode) {
+      axisNode.rotation.set(LAMP_UPRIGHT_ROTATION, 0, 0);
+      axisNode.scale.setScalar(1);
+    }
+    const materials = new Map<MeshStandardMaterial, MeshStandardMaterial>();
+    scene.traverse(node => {
+      if (!(node instanceof Mesh)) return;
+      const cloneMaterial = (material: MeshStandardMaterial) => {
+        let owned = materials.get(material);
+        if (!owned) { owned = material.clone(); materials.set(material, owned); }
+        return owned;
+      };
+      node.material = Array.isArray(node.material) ? node.material.map(cloneMaterial) : cloneMaterial(node.material);
+      node.castShadow = node.receiveShadow = true;
+      node.raycast = () => {};
+    });
+    const bounds = new Box3().setFromObject(scene, true);
+    const center = bounds.getCenter(new Vector3());
+    scene.position.sub(new Vector3(center.x, bounds.min.y, center.z));
+    bounds.setFromObject(scene, true);
+    return { scene, center: bounds.getCenter(new Vector3()), size: bounds.getSize(new Vector3()), materials };
+  }, [original]);
+  useEffect(() => { invalidate(); return () => { materials.forEach(material => material.dispose()); }; }, [materials, invalidate]);
+  return <group ref={shadeRef}>
+    <primitive object={scene} dispose={null} />
+    <mesh position={center}>
+      <boxGeometry args={[size.x, size.y, size.z]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
+    </mesh>
   </group>;
 }
 
@@ -634,6 +671,7 @@ function Scene(props: SceneProps & { mouse: RefObject<[number, number]>; active:
   const turntableRequest = useRef<number | null>(null);
   const walkRequest = useRef(0);
   const chairAction = useRef<(() => void) | null>(null);
+  const chairGroup = useRef<Group>(null);
   const [chairAvailable, setChairAvailable] = useState(false);
   const setChairAction = useMemo(() => (sit: (() => void) | null) => {
     chairAction.current = sit;
@@ -684,7 +722,6 @@ function Scene(props: SceneProps & { mouse: RefObject<[number, number]>; active:
   const lampLight = useRef<PointLight>(null);
   const lampShade = useRef<Group>(null);
   const lampStart = useRef<number | null>(null);
-  const lampEmissive = useRef(new WeakMap<MeshStandardMaterial, number>());
   const invalidate = useThree(state => state.invalidate);
   useEffect(() => { if (props.active) invalidate(); }, [props.active, invalidate]);
   useFrame(() => {
@@ -693,16 +730,14 @@ function Scene(props: SceneProps & { mouse: RefObject<[number, number]>; active:
     const progress = reduced ? 1 : Math.min(1, (now - start) / 1200);
     const factor = .2 + .8 * (1 - (1 - progress) ** 3);
     if (lampLight.current) lampLight.current.intensity = (lampOn ? 3 : 0) * factor;
-    for (const child of lampShade.current?.children ?? []) {
-      const material = (child as Mesh).material;
-      if (!(material instanceof MeshStandardMaterial)) continue;
-      let base = lampEmissive.current.get(material);
-      if (base === undefined) {
-        base = material.emissiveIntensity;
-        lampEmissive.current.set(material, base);
+    lampShade.current?.traverse(child => {
+      if (!(child instanceof Mesh)) return;
+      for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
+        if (!(material instanceof MeshStandardMaterial)) continue;
+        material.emissive.set(lampOn ? '#ffc978' : '#000000');
+        material.emissiveIntensity = (lampOn ? .18 : 0) * factor;
       }
-      material.emissiveIntensity = base * factor;
-    }
+    });
     if (progress < 1 && props.active) invalidate();
   });
   return <HoverLabel.Provider value={props.onHover}>
@@ -752,11 +787,11 @@ function Scene(props: SceneProps & { mouse: RefObject<[number, number]>; active:
       <TransportPart position={room3d.next.position} scale={room3d.next.scale} next action={player.next} disabled={!props.hasTracks} />
     </Furniture>
     <Furniture config={objects.desk}><RoomModel config={objects.desk} /></Furniture>
-    <Furniture config={deskChairConfig}>
+    <group ref={chairGroup} position={deskChairConfig.position} rotation={deskChairConfig.rotation} scale={deskChairConfig.scale}>
       <Action label="Sentarse al escritorio" action={chairAvailable ? () => chairAction.current?.() : undefined} disabled={!props.active || !chairAvailable}>
         <RoomModel config={deskChairConfig} />
       </Action>
-    </Furniture>
+    </group>
     <Furniture config={objects.pc}><RoomModel config={objects.pc} /></Furniture>
     <Furniture config={objects.shelf}>
       <CollectionRack />
@@ -768,7 +803,7 @@ function Scene(props: SceneProps & { mouse: RefObject<[number, number]>; active:
     <Furniture config={objects.shelfMangas}><RoomModel config={objects.shelfMangas} /></Furniture>
     <Suspense fallback={null}><RoomPlushies reduced={reduced} onHover={props.onHover} /></Suspense>
     <Furniture config={objects.lamp}><Action label={lampOn ? 'Apagar la lámpara' : 'Encender la lámpara'} action={props.toggleLamp}>
-      <PleatedLamp lit={lampOn} shadeRef={lampShade} />
+      <Suspense fallback={null}><LampModel shadeRef={lampShade} /></Suspense>
     </Action></Furniture>
     <Furniture config={objects.plant}><Action label="Acariciar la planta" action={props.tapPlant}>
       <RoomModel config={objects.plant} />
@@ -776,7 +811,7 @@ function Scene(props: SceneProps & { mouse: RefObject<[number, number]>; active:
     <Action label="Saludar a Mikako" action={props.tapMikako}>
       <Suspense fallback={null}><Mikako key={props.outfit} outfit={props.outfit} taps={props.mikakoTaps} reduced={reduced} playing={player.playing} active={props.active} destination={destination}
         couchBounds={couchBounds} couchRequest={couchRequest} onCouchOccupied={setCouchOccupied}
-        onTurntableReady={setTurntableApproach} onChairReady={setChairAction} /></Suspense>
+        onTurntableReady={setTurntableApproach} onChairReady={setChairAction} chairGroup={chairGroup} /></Suspense>
     </Action>
   </HoverLabel.Provider>;
 }
