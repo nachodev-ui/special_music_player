@@ -1,0 +1,18 @@
+:root {
+  font-family: 'Nunito', 'Segoe UI', sans-serif;
+  color: #685c52;
+  background: #fffaf0;
+  --bg: #fffaf0; --surface: #fffefb; --tint: #fff4d4;
+  --accent: #e6b95c; --accent-deep: #9f7027; --soft: #fae4e5;
+  --ink: #685c52; --muted: #9c9086; --line: #efe7d9;
+  --shadow: 0 12px 40px #a58b5b0b;
+  --pop-pink-base: #ffe5ec; --pop-pink-soft: #ffc2d1;
+}
+:root[data-theme='matcha'] {
+  --bg: #f4f7ef; --surface: #fffffb; --tint: #e7edda;
+  --accent: #a8bb83; --accent-deep: #627845; --soft: #f3e6d7; --line: #e2e7d7;
+}
+:root[data-theme='sakura'] {
+  --bg: #fdf5f8; --surface: #fffdfd; --tint: #f9e4ed;
+  --accent: #dfa6be; --accent-deep: #a46885; --soft: #eee6f6; --line: #f0e0e8;
+}

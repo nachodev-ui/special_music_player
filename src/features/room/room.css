@@ -1,0 +1,39 @@
+/* The 3D palette uses these theme tokens; transforms live in room3d.config.ts. */
+.workspace.room-workspace { grid-template-columns: 208px minmax(0, 1fr); }
+.room-workspace > .now-panel { display: none; }
+.main-content.room-main { padding: 22px 26px 14px; }
+.room-view[hidden] { display: none; }
+.room-view { --room-wall: #f3eadb; --room-wood: #d6b6a6; --room-outline: #826a61; --room-soft: #f2dce1; --room-rose: #cc91a2; --room-brass: #bca078; min-width: 0; }
+:root[data-theme='sakura'] .room-view { --room-wall: #f6e9e8; --room-wood: #d8b6b1; --room-outline: #856675; --room-soft: #f3dfe8; --room-rose: #c58da5; --room-brass: #bd9e84; }
+:root[data-theme='matcha'] .room-view { --room-wall: #eff0e2; --room-wood: #c8b99f; --room-outline: #73725c; --room-soft: #e4e8d7; --room-rose: #c3a0a0; --room-brass: #aaa075; }
+.room-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+.room-heading h1 { margin-top: 5px; font-size: 27px; letter-spacing: -.7px; }
+.room-heading .japanese-label { font-size: 10px; color: var(--accent-deep); letter-spacing: 1.5px; }
+.room-heading p { font-size: 11px; color: var(--muted); margin: 5px 0 0; }
+.room-clock { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+.room-clock strong { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent-deep); }
+.room-clock span { font-size: 10px; color: var(--muted); }
+.room-scene { border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: var(--surface); box-shadow: 0 10px 30px color-mix(in srgb, var(--room-rose) 10%, transparent); isolation: isolate; }
+.room-canvas { width: 100%; aspect-ratio: 1000 / 640; outline-offset: -4px; touch-action: none; }
+.room-canvas:focus-visible { outline: 2px solid var(--accent-deep); }
+.room-canvas canvas { display: block; }
+.room-scene-hover .room-canvas canvas { cursor: pointer; }
+.room-3d-loading, .room-3d-unavailable { min-height: 280px; display: grid; place-content: center; padding: 24px; color: var(--muted); font-size: 13px; text-align: center; }
+.room-keyboard-hint { margin: 6px 0 4px; text-align: center; font-size: 10px; color: var(--muted); line-height: 1.7; }
+.room-caption { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-top: 12px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); }
+.room-caption-song { display: flex; align-items: center; min-width: 0; gap: 12px; }
+.room-caption-icon { display: grid; place-items: center; background: var(--tint); color: var(--accent-deep); width: 36px; height: 36px; border-radius: 12px; font-size: 22px; flex-shrink: 0; }
+.room-caption-song > div { min-width: 0; }
+.room-caption strong, .room-caption-song div > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-caption strong { font-size: 13px; }
+.room-caption-song div > span { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.room-weather { display: flex; flex-direction: column; text-align: right; flex-shrink: 0; gap: 2px; font-size: 10px; color: var(--muted); }
+.room-weather a { font-size: 9px; color: var(--accent-deep); text-decoration: none; }
+.room-weather a:hover { text-decoration: underline; }
+.room-weather a:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 3px; }
+.room-hint { color: var(--muted); text-align: center; margin: 14px 0 4px; font-size: 10px; }
+.room-bring-music { margin: 14px auto 0; }
+@media (max-width: 1150px) { .workspace.room-workspace { grid-template-columns: 185px minmax(0, 1fr); } .main-content.room-main { padding: 18px 20px 12px; } }
+@media (max-height: 730px) { .room-heading { margin-bottom: 10px; } .room-heading h1 { font-size: 22px; } .room-hint { margin-top: 10px; } .room-scene { max-width: 820px; margin-inline: auto; } }
+@media (max-width: 750px) { .room-caption { align-items: flex-start; flex-direction: column; } .room-weather { text-align: left; } }
+@media (prefers-reduced-motion: reduce) { .room-view *, .room-view *::before, .room-view *::after { transition: none !important; animation: none !important; } }

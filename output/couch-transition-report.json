@@ -1,0 +1,38 @@
+{
+  "units": "metros",
+  "surfaces": {
+    "cushionHalfWidth": 0.56,
+    "cushionHeightBand": 0.06,
+    "backHalfWidth": 0.65,
+    "backBottom": 0.12,
+    "backFront": 0.1
+  },
+  "results": [
+    {
+      "outfit": "rosa",
+      "samples": 1202,
+      "initialPoseError": 0.000004149057017038209,
+      "initialPositionError": 2.575031299301145e-10,
+      "intersections": 0,
+      "minFurnitureGap": 0.09771817403925165,
+      "minPlushGap": 0.02913059162346024,
+      "maxSlip": 0.00011402283912982907,
+      "pelvisDrift": 6.617922631833036e-10,
+      "reverseError": 0,
+      "finalUnchanged": true
+    },
+    {
+      "outfit": "cuadros",
+      "samples": 1202,
+      "initialPoseError": 0.0000020250233983230487,
+      "initialPositionError": 4.358847816021694e-8,
+      "intersections": 0,
+      "minFurnitureGap": 0.05663811359127978,
+      "minPlushGap": 0.028378264152268587,
+      "maxSlip": 0.0002747479745173858,
+      "pelvisDrift": 6.33265364879735e-10,
+      "reverseError": 0,
+      "finalUnchanged": true
+    }
+  ]
+}

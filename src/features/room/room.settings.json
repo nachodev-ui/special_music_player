@@ -1,0 +1,13 @@
+{
+  "location": {
+    "name": "Santiago",
+    "latitude": -33.4489,
+    "longitude": -70.6693,
+    "timeZone": "America/Santiago"
+  },
+  "weather": {
+    "enabled": true,
+    "refreshMinutes": 15,
+    "timeoutMs": 8000
+  }
+}

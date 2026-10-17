@@ -1,0 +1,49 @@
+.song-note-card {
+  position: fixed;
+  z-index: 30;
+  right: 24px;
+  bottom: 119px;
+  width: min(470px, calc(100vw - 32px));
+  max-height: calc(100dvh - 155px);
+  overflow-y: auto;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 38px #91758226, 0 3px 10px #91758210;
+  -webkit-app-region: no-drag;
+}
+.song-note-card-expanded { top: 54px; right: 16px; bottom: 16px; width: min(720px, calc(100vw - 32px)); max-height: none; }
+.song-note-heading { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -18px -18px 17px; padding: 12px 14px 12px 18px; border-bottom: 1px solid var(--line); border-radius: 23px 23px 0 0; background: var(--tint); overflow: hidden; }
+.song-note-heading::before { content: ''; position: absolute; inset: 0; background: var(--accent); opacity: .38; mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'%3E%3Ccircle cx='4' cy='4' r='2'/%3E%3Ccircle cx='15' cy='15' r='2'/%3E%3C/svg%3E"); pointer-events: none; }
+.song-note-heading > span, .song-note-heading-actions { position: relative; }
+.song-note-heading > span { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; color: var(--accent-deep); }
+.song-note-heading img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; mix-blend-mode: multiply; }
+.song-note-heading-actions { display: flex; align-items: center; gap: 2px; }
+.song-note-heading .icon-button { color: var(--accent-deep); background: var(--surface); }
+.song-note-heading .icon-button:hover { background: var(--soft); }
+.song-note-track { display: flex; align-items: center; gap: 13px; margin-bottom: 17px; }
+.song-note-track > div:last-child { min-width: 0; }
+.song-note-card .song-note-artwork { width: 68px; height: 68px; border-radius: 17px; background: var(--tint); box-shadow: 0 4px 12px #91758216; }
+.song-note-label { font-size: 8px; font-weight: 800; letter-spacing: 1.3px; color: var(--accent-deep); }
+.song-note-track h2 { margin: 4px 0; font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
+.song-note-track p { margin: 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.song-note-memory { margin: 0; padding: 16px 18px; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.song-note-card-expanded .song-note-memory { font-size: 14px; line-height: 1.9; }
+.song-note-hint { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0; }
+.song-note-card textarea { display: block; width: 100%; margin-top: 8px; min-height: 160px; resize: vertical; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink); font: inherit; font-size: 12px; line-height: 1.7; -webkit-app-region: no-drag; }
+.song-note-card-expanded textarea { min-height: 280px; }
+.song-note-card textarea::placeholder { color: var(--muted); }
+.song-note-card :focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 3px; }
+.song-note-editor-footer { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 9px; margin-top: 6px; }
+.song-note-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 13px; }
+.song-note-card .subtle-button { color: var(--accent-deep); font-size: 11px; }
+.song-note-card .primary-button { background: var(--tint); color: var(--accent-deep); }
+.song-note-saved { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #7c9067; }
+.song-note-error { font-size: 11px; line-height: 1.6; color: #a34e67; margin-top: 12px; }
+.song-note-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.volume .song-note-toggle { color: var(--accent-deep); }
+.volume .song-note-toggle.active { background: var(--tint); }
+@media (max-width: 950px) { .song-note-card { right: 16px; } .volume input { min-width: 40px; } }
+@media (prefers-reduced-motion: reduce) { .song-note-card *, .song-note-toggle { animation: none !important; transition: none !important; } }

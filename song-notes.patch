@@ -1,0 +1,520 @@
+diff --git a/shared/contracts.ts b/shared/contracts.ts
+--- a/shared/contracts.ts
++++ b/shared/contracts.ts
+@@ -22,5 +22,7 @@
+   chooseFolder(): Promise<Library | null>;
+   restoreLibrary(): Promise<Library | null>;
+   resolveArtwork(trackId: string): Promise<string | null>;
++  getSongNote(trackId: string): Promise<string>;
++  saveSongNote(trackId: string, note: string): Promise<string>;
+   windowControl(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
+ }
+diff --git a/electron/preload.ts b/electron/preload.ts
+--- a/electron/preload.ts
++++ b/electron/preload.ts
+@@ -6,5 +6,7 @@
+   chooseFolder: () => ipcRenderer.invoke('library:choose'),
+   restoreLibrary: () => ipcRenderer.invoke('library:restore'),
+   resolveArtwork: (trackId) => ipcRenderer.invoke('library:artwork', trackId),
++  getSongNote: (trackId) => ipcRenderer.invoke('notes:get', trackId),
++  saveSongNote: (trackId, note) => ipcRenderer.invoke('notes:save', trackId, note),
+   windowControl: (action) => ipcRenderer.invoke('window:control', action),
+ };
+diff --git a/electron/main.ts b/electron/main.ts
+--- a/electron/main.ts
++++ b/electron/main.ts
+@@ -6,6 +6,7 @@
+ import { Readable } from 'node:stream';
+ import { allowedAudio, allowedTracks, scanFolder } from './library';
+ import { ArtworkCache } from './artwork';
++import { SongNotes } from './songNotes';
+ 
+ const directory = path.dirname(fileURLToPath(import.meta.url));
+ const developmentURL = !app.isPackaged && process.env.USAGI_DEV_URL === 'http://127.0.0.1:5173'
+@@ -87,6 +88,15 @@
+       return new Response(body, { status: range ? 206 : 200, headers });
+     } catch { return new Response(null, { status: 404 }); }
+   });
++  const notes = new SongNotes(app.getPath('userData'));
++  ipcMain.handle('notes:get', (event, id: unknown) => {
++    trustedSender(event);
++    return notes.get(id);
++  });
++  ipcMain.handle('notes:save', (event, id: unknown, note: unknown) => {
++    trustedSender(event);
++    return notes.set(id, note);
++  });
+   const settingsFile = path.join(app.getPath('userData'), 'library.json');
+   ipcMain.handle('library:choose', async (event) => {
+     trustedSender(event);
+diff --git a/src/features/player/usePlayer.ts b/src/features/player/usePlayer.ts
+--- a/src/features/player/usePlayer.ts
++++ b/src/features/player/usePlayer.ts
+@@ -13,6 +13,7 @@
+   const historyRef = useRef<string[]>([]);
+   const [current, setCurrent] = useState<Track | null>(null);
+   const [playing, setPlaying] = useState(false);
++  const [playbackStart, setPlaybackStart] = useState<{ trackId: string; sequence: number } | null>(null);
+   const [position, setPosition] = useState(0);
+   const [duration, setDuration] = useState(0);
+   const [volume, setVolume] = useState(() => { const value = Number(localStorage.getItem('usagi-volume') ?? 0.7); return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.7; });
+@@ -70,8 +71,17 @@
+   useEffect(() => {
+     const audio = new Audio(); audio.preload = 'metadata'; audioRef.current = audio;
+     const sync = () => { setPosition(audio.currentTime || 0); if (Number.isFinite(audio.duration)) setDuration(audio.duration); };
++    let started = false;
+     const onPlay = () => setPlaying(true);
++    const onPlaying = () => {
++      const track = currentRef.current;
++      if (!started && track) {
++        started = true;
++        setPlaybackStart(previous => ({ trackId: track.id, sequence: (previous?.sequence ?? 0) + 1 }));
++      }
++    };
++    const onPause = () => { started = false; setPlaying(false); };
++    const onEnded = () => { started = false; advance(1, true); };
+-    const onPause = () => setPlaying(false);
+-    const onEnded = () => advance(1, true);
+     const onError = () => { setPlaying(false); setError('No pude reproducir este archivo. Prueba otra canción o revisa el archivo original.'); };
+     audio.addEventListener('timeupdate', sync); audio.addEventListener('loadedmetadata', sync); audio.addEventListener('durationchange', sync);
++    audio.addEventListener('playing', onPlaying);
+@@ -79,6 +89,7 @@
+     return () => {
+       audio.pause(); audio.removeAttribute('src');
+       audio.removeEventListener('timeupdate', sync); audio.removeEventListener('loadedmetadata', sync); audio.removeEventListener('durationchange', sync);
++      audio.removeEventListener('playing', onPlaying);
+       audio.removeEventListener('play', onPlay); audio.removeEventListener('pause', onPause); audio.removeEventListener('ended', onEnded); audio.removeEventListener('error', onError);
+       audio.load(); audioRef.current = null;
+     };
+@@ -104,6 +115,6 @@
+     const audio = audioRef.current;
+     if (audio && Number.isFinite(audio.duration)) { audio.currentTime = Math.max(0, Math.min(value, audio.duration)); setPosition(audio.currentTime); }
+   }, []);
++  return { current, playing, playbackStart, position, duration, volume, shuffle, repeat, error, select, toggle, seek,
+-  return { current, playing, position, duration, volume, shuffle, repeat, error, select, toggle, seek,
+     next: () => advance(1), previous: () => advance(-1), setVolume,
+     toggleShuffle: () => { shuffleRef.current = !shuffleRef.current; setShuffle(shuffleRef.current); historyRef.current = []; },
+diff --git a/src/features/player/PlayerBar.tsx b/src/features/player/PlayerBar.tsx
+--- a/src/features/player/PlayerBar.tsx
++++ b/src/features/player/PlayerBar.tsx
+@@ -1,4 +1,4 @@
+ import type { CSSProperties } from 'react';
++import { Heart, Pause, Play, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, StickyNote } from 'lucide-react';
+-import { Heart, Pause, Play, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX } from 'lucide-react';
+ import { motion } from 'motion/react';
+ import { Artwork } from '../../components/Artwork';
+@@ -9,6 +9,6 @@
+   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+ }
+ type Player = ReturnType<typeof usePlayer>;
++export function PlayerBar({ player, hasTracks, favorite, onFavorite, noteOpen, onToggleNote }: { player: Player; hasTracks: boolean; favorite: boolean; onFavorite: () => void; noteOpen: boolean; onToggleNote: () => void }) {
+-export function PlayerBar({ player, hasTracks, favorite, onFavorite }: { player: Player; hasTracks: boolean; favorite: boolean; onFavorite: () => void }) {
+   const pct = player.duration ? (player.position / player.duration) * 100 : 0;
+   return <footer className="player-bar">
+@@ -25,6 +25,6 @@
+       </div>
+       <div className="progress"><span>{time(player.position)}</span><input aria-label="Progreso de reproducción" type="range" min={0} max={player.duration || 1} step="0.1" value={Math.min(player.position, player.duration || 1)} disabled={!player.current || !player.duration} style={{ '--fill': `${pct}%` } as CSSProperties} onChange={(event) => player.seek(Number(event.target.value))} /><span>{time(player.duration)}</span></div>
+     </div>
++    <div className="volume"><button className={`icon-button song-note-toggle ${noteOpen ? 'active' : ''}`} aria-label={noteOpen ? 'Cerrar nota personal' : 'Ver nota personal de la canción'} title="Mi nota personal" aria-expanded={noteOpen} aria-controls={noteOpen ? 'song-note-card' : undefined} disabled={!player.current} onClick={onToggleNote}><StickyNote size={19} /></button><button className="icon-button" aria-label={player.volume ? 'Silenciar' : 'Activar sonido'} title="Silenciar" onClick={() => player.setVolume(player.volume ? 0 : 0.7)}>{player.volume ? <Volume2 size={19} /> : <VolumeX size={19} />}</button><input aria-label="Volumen" type="range" min="0" max="1" step="0.01" value={player.volume} style={{ '--fill': `${player.volume * 100}%` } as CSSProperties} onChange={(event) => player.setVolume(Number(event.target.value))} /><span>{Math.round(player.volume * 100)}%</span></div>
+-    <div className="volume"><button className="icon-button" aria-label={player.volume ? 'Silenciar' : 'Activar sonido'} title="Silenciar" onClick={() => player.setVolume(player.volume ? 0 : 0.7)}>{player.volume ? <Volume2 size={19} /> : <VolumeX size={19} />}</button><input aria-label="Volumen" type="range" min="0" max="1" step="0.01" value={player.volume} style={{ '--fill': `${player.volume * 100}%` } as CSSProperties} onChange={(event) => player.setVolume(Number(event.target.value))} /><span>{Math.round(player.volume * 100)}%</span></div>
+   </footer>;
+ }
+diff --git a/src/App.tsx b/src/App.tsx
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -6,5 +6,7 @@
+ import { useLibrary } from './features/library/useLibrary';
+ import { usePlayer } from './features/player/usePlayer';
+ import { PlayerBar, time } from './features/player/PlayerBar';
++import { SongNoteCard } from './features/player/SongNoteCard';
++import { useSongNotes } from './features/player/useSongNotes';
+ import { appear, softSpring } from './animations/presets';
+ import { roomEvents } from './secrets/events';
+@@ -16,6 +18,11 @@
+   const { library, loading, error, chooseFolder } = useLibrary();
+   const tracks = library?.tracks ?? noTracks;
+   const player = usePlayer(tracks);
++  const notes = useSongNotes(player.current?.id);
++  const [noteOpen, setNoteOpen] = useState(false);
++  useEffect(() => {
++    setNoteOpen(!!player.current && player.playbackStart?.trackId === player.current.id);
++  }, [player.current?.id, player.playbackStart]);
+   const [view, setView] = useState<'all' | 'favorites'>('all');
+   const [search, setSearch] = useState('');
+   const [sort, setSort] = useState(false);
+@@ -82,6 +89,9 @@
+       </main>
+       <aside className="now-panel"><div className="panel-heading"><span><Disc3 size={16} />SONANDO EN TU RINCÓN</span><Sparkles size={16} /></div><AnimatePresence mode="wait"><motion.div key={player.current?.id ?? 'empty'} {...appear} className="now-content"><div className={`record-sleeve ${player.playing ? 'is-playing' : ''}`}><Artwork track={player.current} className="large-artwork" /><span className="record-sticker">♡</span></div><div className="now-title"><span className="tiny-label">{player.current ? player.current.format + ' · AUDIO LOCAL' : 'LISTO PARA ESCUCHAR'}</span><h2>{player.current?.title ?? 'La banda sonora de tus días'}</h2><p>{player.current?.artist ?? 'Aquí empieza algo bonito.'}</p></div><div className="now-details"><span>{player.current?.album ?? 'Una canción a la vez'}</span><Heart size={14} /></div></motion.div></AnimatePresence><div className="little-note"><span>ひとやすみ</span><h3>Sin prisa, sin ruido.</h3><p>Este ratito es tuyo.<br />Pon una canción y quédate.</p><span className="note-doodle">☁︎ &nbsp; ✧ &nbsp; ☁︎</span></div><div className="panel-bottom"></div></aside>
+     </div>
++    <AnimatePresence mode="wait">
++      {noteOpen && player.current && <SongNoteCard key={player.current.id} track={player.current} notes={notes} playbackSequence={player.playbackStart?.sequence ?? 0} onClose={() => setNoteOpen(false)} />}
++    </AnimatePresence>
++    <PlayerBar noteOpen={noteOpen} onToggleNote={() => setNoteOpen(open => !open)} player={player} hasTracks={tracks.length > 0} favorite={currentFavorite} onFavorite={() => { if (player.current) favorite(player.current.id); }} />
+-    <PlayerBar player={player} hasTracks={tracks.length > 0} favorite={currentFavorite} onFavorite={() => { if (player.current) favorite(player.current.id); }} />
+   </div>;
+ }
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -11,6 +11,7 @@
+     "build": "npm run typecheck && vite build && node scripts/build-electron.mjs",
+     "start": "npm run build && electron .",
+     "pack": "npm run build && electron-builder --dir",
++    "test:notes": "node --test scripts/song-notes.test.mjs",
+     "test:artwork": "node --test scripts/artwork.test.mjs",
+     "test:artwork:electron": "electron scripts/artwork-smoke.mjs"
+   },
+diff --git a/electron/songNotes.ts b/electron/songNotes.ts
+new file mode 100644
+--- /dev/null
++++ b/electron/songNotes.ts
+@@ -0,0 +1,69 @@
++import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
++import path from 'node:path';
++
++export const MAX_NOTE_LENGTH = 5000;
++type Notes = Record<string, string>;
++
++export class SongNotes {
++  private readonly filename: string;
++  private queue: Promise<void> = Promise.resolve();
++
++  constructor(userData: string) {
++    this.filename = path.join(userData, 'song-notes.json');
++  }
++
++  private validateId(id: unknown): asserts id is string {
++    if (typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id)) {
++      throw new Error('Canción no válida.');
++    }
++  }
++
++  private async read(): Promise<Notes> {
++    let contents: string;
++    try { contents = await readFile(this.filename, 'utf8'); }
++    catch (error) {
++      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return Object.create(null) as Notes;
++      throw error;
++    }
++    const parsed: unknown = JSON.parse(contents);
++    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
++      throw new Error('No se pudo leer el archivo de notas.');
++    }
++    const notes: Notes = Object.create(null) as Notes;
++    for (const [id, note] of Object.entries(parsed)) {
++      if (!/^[a-f0-9]{64}$/.test(id) || typeof note !== 'string' || note.length > MAX_NOTE_LENGTH) {
++        throw new Error('El archivo de notas contiene datos no válidos.');
++      }
++      notes[id] = note;
++    }
++    return notes;
++  }
++
++  async get(id: unknown): Promise<string> {
++    this.validateId(id);
++    await this.queue;
++    return (await this.read())[id] ?? '';
++  }
++
++  set(id: unknown, note: unknown): Promise<string> {
++    this.validateId(id);
++    if (typeof note !== 'string' || note.length > MAX_NOTE_LENGTH) {
++      throw new Error('La nota debe tener como máximo 5000 caracteres.');
++    }
++    const saved = note.trim();
++    const operation = this.queue.then(async () => {
++      const notes = await this.read();
++      if (saved) notes[id] = saved;
++      else delete notes[id];
++      await mkdir(path.dirname(this.filename), { recursive: true });
++      const temporary = this.filename + '.tmp';
++      try {
++        await writeFile(temporary, JSON.stringify(notes, null, 2) + '\n', 'utf8');
++        await rename(temporary, this.filename);
++      } finally { await rm(temporary, { force: true }); }
++      return saved;
++    });
++    this.queue = operation.then(() => {}, () => {});
++    return operation;
++  }
++}
+diff --git a/src/features/player/useSongNotes.ts b/src/features/player/useSongNotes.ts
+new file mode 100644
+--- /dev/null
++++ b/src/features/player/useSongNotes.ts
+@@ -0,0 +1,60 @@
++import { useCallback, useEffect, useRef, useState } from 'react';
++
++type NoteState = {
++  note: string;
++  draft: string;
++  loaded: boolean;
++  loading: boolean;
++  saving: boolean;
++  error: string;
++};
++const empty: NoteState = { note: '', draft: '', loaded: false, loading: true, saving: false, error: '' };
++
++export function useSongNotes(trackId?: string) {
++  const cache = useRef<Record<string, NoteState>>({});
++  const [entries, setEntries] = useState<Record<string, NoteState>>({});
++  const [retry, setRetry] = useState(0);
++  const patch = useCallback((id: string, values: Partial<NoteState>) => {
++    const next = { ...cache.current, [id]: { ...(cache.current[id] ?? empty), ...values } };
++    cache.current = next;
++    setEntries(next);
++  }, []);
++
++  useEffect(() => {
++    if (!trackId || cache.current[trackId]?.loaded) return;
++    let active = true;
++    patch(trackId, { loading: true, error: '' });
++    const desktop = window.desktop;
++    const request = desktop ? desktop.getSongNote(trackId) : Promise.reject(new Error('Desktop unavailable'));
++    request.then(note => {
++      if (active) patch(trackId, { note, draft: note, loaded: true, loading: false });
++    }).catch(() => {
++      if (active) patch(trackId, { loading: false, error: 'No pude leer tu nota. Intenta de nuevo.' });
++    });
++    return () => { active = false; };
++  }, [trackId, retry, patch]);
++
++  const entry = (trackId && entries[trackId]) || empty;
++  async function save(): Promise<boolean> {
++    if (!trackId || !entry.loaded || cache.current[trackId]?.saving || !window.desktop) return false;
++    const id = trackId;
++    patch(id, { saving: true, error: '' });
++    try {
++      const note = await window.desktop.saveSongNote(id, entry.draft);
++      patch(id, { note, draft: note, saving: false });
++      return true;
++    } catch {
++      patch(id, { saving: false, error: 'No pude guardar tu nota. Tu texto sigue aquí; vuelve a intentarlo.' });
++      return false;
++    }
++  }
++
++  return {
++    ...entry,
++    dirty: entry.draft !== entry.note,
++    setDraft: (draft: string) => { if (trackId) patch(trackId, { draft }); },
++    discard: () => { if (trackId) patch(trackId, { draft: entry.note, error: '' }); },
++    retry: () => setRetry(value => value + 1),
++    save,
++  };
++}
+diff --git a/src/features/player/SongNoteCard.tsx b/src/features/player/SongNoteCard.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/features/player/SongNoteCard.tsx
+@@ -0,0 +1,88 @@
++import { useEffect, useRef, useState } from 'react';
++import { motion, useReducedMotion } from 'motion/react';
++import { Check, Heart, LoaderCircle, PencilLine, X } from 'lucide-react';
++import type { Track } from '../../../shared/contracts';
++import { Artwork } from '../../components/Artwork';
++import type { useSongNotes } from './useSongNotes';
++import './songNotes.css';
++
++type Notes = ReturnType<typeof useSongNotes>;
++export function SongNoteCard({ track, notes, onClose, playbackSequence }: { track: Track; notes: Notes; onClose: () => void; playbackSequence: number }) {
++  const reducedMotion = useReducedMotion();
++  const [editing, setEditing] = useState(notes.dirty);
++  const [hovered, setHovered] = useState(false);
++  const [focused, setFocused] = useState(false);
++  const [saved, setSaved] = useState(false);
++  const editButton = useRef<HTMLButtonElement>(null);
++  const wasEditing = useRef(editing);
++  useEffect(() => {
++    if (wasEditing.current && !editing) editButton.current?.focus();
++    wasEditing.current = editing;
++  }, [editing]);
++  const closeRef = useRef(onClose);
++  closeRef.current = onClose;
++
++  useEffect(() => {
++    if (editing || hovered || focused || notes.loading || notes.dirty || notes.error || notes.saving) return;
++    const timer = window.setTimeout(() => closeRef.current(), 8000);
++    return () => window.clearTimeout(timer);
++  }, [editing, hovered, focused, notes.loading, notes.dirty, notes.error, notes.saving, playbackSequence]);
++
++  function finishEditing() {
++    setEditing(false);
++  }
++
++  return <motion.section
++    id="song-note-card"
++    className="song-note-card"
++    aria-label={`Nota personal de ${track.title}`}
++    initial={{ opacity: 0, y: reducedMotion ? 0 : 16, scale: reducedMotion ? 1 : 0.97 }}
++    animate={{ opacity: 1, y: 0, scale: 1 }}
++    exit={{ opacity: 0, y: reducedMotion ? 0 : 10, scale: reducedMotion ? 1 : 0.98 }}
++    transition={{ duration: reducedMotion ? 0.1 : 0.35, ease: 'easeOut' }}
++    onMouseEnter={() => setHovered(true)}
++    onMouseLeave={() => setHovered(false)}
++    onFocusCapture={() => setFocused(true)}
++    onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}
++    onKeyDown={event => {
++      if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
++      if (editing && (event.ctrlKey || event.metaKey) && event.key === 'Enter') {
++        event.preventDefault();
++        void notes.save().then(ok => { if (ok) { setSaved(true); finishEditing(); } });
++      }
++    }}
++  >
++    <div className="song-note-heading">
++      <span><img src="./characters/usagi.jpg" alt="" />Un recuerdo entre canciones ♡</span>
++      <button className="icon-button" aria-label="Cerrar nota personal" title="Cerrar" onClick={onClose}><X size={17} /></button>
++    </div>
++    <div className="song-note-track">
++      <Artwork track={track} className="song-note-artwork" />
++      <div><span className="song-note-label">ESTA CANCIÓN Y TÚ</span><h2>{track.title}</h2><p>{track.artist}</p></div>
++    </div>
++    <p className="song-note-announcement" role="status">{track.title} · {track.artist}</p>
++    {notes.loading ? <p className="song-note-hint" role="status"><LoaderCircle size={15} className="spinning" />Buscando tu pequeño recuerdo…</p> : <>
++      {editing ? <form onSubmit={event => {
++        event.preventDefault();
++        void notes.save().then(ok => { if (ok) { setSaved(true); finishEditing(); } });
++      }}>
++        <label className="song-note-label" htmlFor="song-note-text">¿QUÉ SIGNIFICA PARA TI?</label>
++        <textarea id="song-note-text" autoFocus maxLength={5000} rows={4} value={notes.draft}
++          placeholder="Un recuerdo, una persona, algo que sientes al escucharla…"
++          disabled={notes.saving} onChange={event => { notes.setDraft(event.target.value); setSaved(false); }} />
++        <div className="song-note-editor-footer"><span>{notes.draft.length}/5000</span><span>Ctrl + Enter para guardar</span></div>
++        <div className="song-note-actions">
++          <button type="button" className="subtle-button" disabled={notes.saving} onClick={() => { notes.discard(); finishEditing(); }}>Cancelar</button>
++          <button type="submit" className="primary-button" disabled={notes.saving || !notes.loaded}>{notes.saving ? <LoaderCircle size={14} className="spinning" /> : <Heart size={14} />} {notes.saving ? 'Guardando…' : 'Guardar mi nota'}</button>
++        </div>
++      </form> : <>
++        {notes.note ? <p className="song-note-memory">{notes.note}</p> : notes.loaded && <p className="song-note-hint">Esta canción puede guardar un pedacito de ti. Escribe lo que significa para ti ♡</p>}
++        <div className="song-note-actions">
++          <span className="song-note-saved" role="status">{saved && <><Check size={13} />Nota guardada ♡</>}</span>
++          <button ref={editButton} className="subtle-button" disabled={!notes.loaded} onClick={() => { setEditing(true); setSaved(false); }}><PencilLine size={14} />{notes.note ? 'Editar mi nota' : 'Escribir mi nota'}</button>
++        </div>
++      </>}
++      {notes.error && <div className="song-note-error" role="alert">{notes.error}{!notes.loaded && <button className="subtle-button" onClick={notes.retry}>Intentar de nuevo</button>}</div>}
++    </>}
++  </motion.section>;
++}
+diff --git a/src/features/player/songNotes.css b/src/features/player/songNotes.css
+new file mode 100644
+--- /dev/null
++++ b/src/features/player/songNotes.css
+@@ -0,0 +1,41 @@
++.song-note-card {
++  position: fixed;
++  z-index: 30;
++  right: 24px;
++  bottom: 119px;
++  width: min(390px, calc(100vw - 32px));
++  max-height: calc(100dvh - 185px);
++  overflow-y: auto;
++  padding: 18px;
++  border: 1px solid #edd9d9;
++  border-radius: 24px;
++  background: linear-gradient(145deg, #fffdf8, #fff0f4 72%, #fff5da);
++  color: #68565d;
++  box-shadow: 0 12px 38px #91758226, 0 3px 10px #91758210;
++  -webkit-app-region: no-drag;
++}
++.song-note-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
++.song-note-heading > span { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; color: #a36d82; }
++.song-note-heading img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; mix-blend-mode: multiply; }
++.song-note-track { display: flex; align-items: center; gap: 13px; margin-bottom: 17px; }
++.song-note-track > div:last-child { min-width: 0; }
++.song-note-artwork { width: 68px; height: 68px; border-radius: 17px; box-shadow: 0 4px 12px #91758216; }
++.song-note-label { font-size: 8px; font-weight: 800; letter-spacing: 1.3px; color: #a36d82; }
++.song-note-track h2 { margin: 4px 0; font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
++.song-note-track p { margin: 0; font-size: 11px; color: #8e7882; overflow-wrap: anywhere; }
++.song-note-memory { margin: 0; padding: 14px; background: #fffdf9b3; border: 1px dashed #e7cbd4; border-radius: 16px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow-y: auto; }
++.song-note-hint { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 1.7; color: #8e7882; margin: 0; }
++.song-note-card textarea { display: block; width: 100%; margin-top: 8px; min-height: 106px; max-height: 180px; resize: vertical; padding: 12px; border: 1px solid #e7cbd4; border-radius: 14px; background: #fffdfb; color: #68565d; font: inherit; font-size: 12px; line-height: 1.7; -webkit-app-region: no-drag; }
++.song-note-card textarea::placeholder { color: #a28c95; }
++.song-note-card :focus-visible { outline: 2px solid #c28fa4; outline-offset: 3px; }
++.song-note-editor-footer { display: flex; justify-content: space-between; gap: 8px; color: #9c8790; font-size: 9px; margin-top: 6px; }
++.song-note-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 13px; }
++.song-note-card .subtle-button { color: #a36d82; font-size: 11px; }
++.song-note-card .primary-button { background: #f7dde7; color: #8e5870; }
++.song-note-saved { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #7c9067; }
++.song-note-error { font-size: 11px; line-height: 1.6; color: #a34e67; margin-top: 12px; }
++.song-note-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
++.volume .song-note-toggle { color: #a36d82; }
++.volume .song-note-toggle.active { background: #f9e4ed; }
++@media (max-width: 950px) { .song-note-card { right: 16px; } .volume input { min-width: 40px; } }
++@media (prefers-reduced-motion: reduce) { .song-note-card *, .song-note-toggle { animation: none !important; transition: none !important; } }
+diff --git a/scripts/song-notes.test.mjs b/scripts/song-notes.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/song-notes.test.mjs
+@@ -0,0 +1,71 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++import ts from 'typescript';
++
++const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const source = await readFile(path.join(root, 'electron/songNotes.ts'), 'utf8');
++const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } });
++const { SongNotes } = await import('data:text/javascript;base64,' + Buffer.from(outputText).toString('base64'));
++const first = 'a'.repeat(64), second = 'b'.repeat(64);
++
++async function scratch(t) {
++  const directory = await mkdtemp(path.join(root, '.song-notes-tests-'));
++  t.after(async () => {
++    const relative = path.relative(root, directory);
++    assert.ok(relative.startsWith('.song-notes-tests-') && !relative.includes(path.sep));
++    await rm(directory, { recursive: true, force: true });
++  });
++  return directory;
++}
++
++test('saves independent notes concurrently and restores them after restart', async t => {
++  const directory = await scratch(t);
++  const notes = new SongNotes(directory);
++  assert.equal(await notes.get(first), '');
++  await Promise.all([notes.set(first, ' Mi recuerdo ♡\nSegunda línea '), notes.set(second, 'Otra canción')]);
++  const restored = new SongNotes(directory);
++  assert.equal(await restored.get(first), 'Mi recuerdo ♡\nSegunda línea');
++  assert.equal(await restored.get(second), 'Otra canción');
++  assert.deepEqual(JSON.parse(await readFile(path.join(directory, 'song-notes.json'), 'utf8')), {
++    [first]: 'Mi recuerdo ♡\nSegunda línea', [second]: 'Otra canción',
++  });
++  assert.deepEqual(await readdir(directory), ['song-notes.json']);
++});
++
++test('edits and clears a note while preserving the other songs', async t => {
++  const notes = new SongNotes(await scratch(t));
++  await notes.set(first, 'Antes');
++  await notes.set(second, 'Mi otra nota');
++  await notes.set(first, 'Después');
++  assert.equal(await notes.get(first), 'Después');
++  await notes.set(first, '  ');
++  assert.equal(await notes.get(first), '');
++  assert.equal(await notes.get(second), 'Mi otra nota');
++});
++
++test('rejects invalid IDs and note payloads', async t => {
++  const notes = new SongNotes(await scratch(t));
++  await assert.rejects(notes.get('../library.json'));
++  assert.throws(() => notes.set('../library.json', 'texto'));
++  assert.throws(() => notes.set(first, { text: 'texto' }));
++  assert.throws(() => notes.set(first, 'x'.repeat(5001)));
++  await notes.set(first, 'Texto válido');
++  assert.equal(await notes.get(first), 'Texto válido');
++});
++
++test('preserves a damaged file and recovers the write queue after failure', async t => {
++  const directory = await scratch(t);
++  const filename = path.join(directory, 'song-notes.json');
++  await writeFile(filename, '{broken', 'utf8');
++  const notes = new SongNotes(directory);
++  await assert.rejects(notes.get(first));
++  await assert.rejects(notes.set(first, 'No sobrescribir'));
++  assert.equal(await readFile(filename, 'utf8'), '{broken');
++  await writeFile(filename, JSON.stringify({ [second]: 'Recuperada' }), 'utf8');
++  await notes.set(first, 'Nueva');
++  assert.equal(await notes.get(second), 'Recuperada');
++  assert.equal(await notes.get(first), 'Nueva');
++});

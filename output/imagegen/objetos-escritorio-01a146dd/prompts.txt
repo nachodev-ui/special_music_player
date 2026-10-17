@@ -1,0 +1,20 @@
+Herramienta: image_gen integrada
+
+1. Ángulo original
+Use case: precise-object-edit.
+Input image: the supplied photo is the reference/edit target.
+Generate ONE standalone image, never a collage or view sheet. Reconstruct a faithful photorealistic cutout of the COMPLETE collection of objects that sit on the desk, retaining the exact elevated oblique camera angle and arrangement from the photo. Center everything with generous white margin; complete the cropped left portrait monitor simply and coherently.
+KEEP: both monitors, left portrait and right landscape, including their fabric/lace ruffled pastel lilac/pink/white frames and bows, and monitor stands; the pale pink keyboard; white cloud wrist rest; mouse; full rectangular anime illustrated mousepad; Kuromi plush on the left; pixel clock; small shelf/riser under the landscape monitor; visible small figurines, little display/controller, and small tabletop accessories. Match the reference positions and proportions, not an invented setup. Preserve the visible pale anime wallpaper art on BOTH screens and the anime illustration on the mat. Keep all objects complete.
+REMOVE: actual desk/table and its edges/legs, walls, fairy light curtain, room background, glass side panel, floor, chair, hanging/loose cables, and anything not on the desktop.
+BACKGROUND: uniform pure white (#FFFFFF), no visible surface, horizon, floor, pedestal or cast shadows. The mousepad is a retained object; it must not become a desk. Objects remain spatially arranged as if on the same invisible plane.
+LIGHT/COLOR: even neutral studio lighting, remove purple photo color cast while preserving real soft pink, white and lilac colors and fabric/plastic/plush materials. Accurate believable product photography, no artistic redesign.
+No added objects, labels, text, brands, logos or watermark. ONE complete setup in this image.
+
+2. Vista frontal
+Use case: precise-object-edit.
+Create ONE standalone frontal image of the COMPLETE desktop-object collection. Do not make a collage or multi-view sheet.
+Input 1 is the original photo, establishing the real objects and placement. Input 2 is the already generated oblique cutout, establishing the EXACT consistent object identities, color, material, details and completed shapes for this matching second image.
+Primary change: move the camera to STRAIGHT IN FRONT, centered on the setup, no left/right oblique angle. Monitor faces should appear front-on, with vertical edges vertical and horizontal edges horizontal. Camera slightly elevated only enough to show keyboard, wrist rest, mouse and anime mat clearly. This is a front view of the SAME setup in image 2, not a new design. Keep left monitor portrait, right monitor landscape, preserve relative sizes, monitor heights, arrangement, bows, lilac lace/fabric frames, stands and pale pink anime wallpapers.
+Keep the exact same Kuromi plush on the left, pale pink keyboard near center, white cloud wrist rest immediately in front of keyboard, mouse on right, full anime mousepad, small shelf under landscape monitor, small figurines, controller/display, pixel clock and all small tabletop accessories visible in image 2. Preserve object count, shapes, scale, palette and materials. The anime artworks on screens and mat should match image 2. Do not introduce new decor or extra furniture.
+Uniform pure WHITE background (#FFFFFF). No desk or table, no supporting surface, no horizon, no floor, no cast shadows, no cables, no walls, no fairy lights, no glass panel, no chair. Retain mousepad as a thin object without turning it into a tabletop.
+Even neutral studio lighting with real pastel pink/white/lilac colors, NO purple lighting cast. Photorealistic product cutout. Entire collection fully visible and centered with margin all around, no cropping. No text, brands, labels or watermark.
