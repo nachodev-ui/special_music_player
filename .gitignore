@@ -4,6 +4,7 @@ dist-electron/
 release/
 *.log
 .verification/
+.artwork-smoke-*/
 gift-seed/
 build
 .vite

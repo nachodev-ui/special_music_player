@@ -9,6 +9,8 @@ import { COUCH_RECLINE, couchPhase, couchApproachPosition, couchRootPosition, cr
 import { createTurntablePress, TURNTABLE_CONTACT_TIME, TURNTABLE_PRESS, type TurntableApproach } from './mikakoTurntable';
 import { CHAIR_POSITION, DESK_CHAIR, chairEntry, chairRoot, chairSlide, createDeskChairClip } from './mikakoDeskChair';
 
+import { COUCH_SIT_IK_ENABLED, createSofaSitClip, sofaSitRootPosition } from './mikakoSofaSit';
+
 const noRaycast = () => {};
 let welcomeAttempted = false;
 
@@ -366,6 +368,29 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
         ...(clips.dance ? { dance: mixer.clipAction(clips.dance) } : {}),
         ...(clips.stretch ? { stretch: mixer.clipAction(clips.stretch) } : {}),
       };
+      let sofaSitClip: AnimationClip | null = null;
+      let sofaSitAttempted = false;
+      const wantsSofaIK = () => COUCH_SIT_IK_ENABLED && !!couchBounds && !!sitClip && (!sofaSitAttempted || !!sofaSitClip);
+      const prepareSofaSit = () => {
+        if (sofaSitAttempted || !wantsSofaIK()) return;
+        sofaSitAttempted = true;
+        try {
+          const clip = createSofaSitClip(model, sitClip!, selected.hip, settings.scale, yawOffset, couchBounds!,
+            { start: sitStart, end: sitEnd, home: settings.position, fromCurrentPose: true });
+          if (clip.name !== 'mikako-sofa-sit') return;
+          const sit = mixer.clipAction(clip), rise = mixer.clipAction(clip.clone());
+          for (const action of [sit, rise]) {
+            action.setLoop(LoopOnce, Infinity).setEffectiveWeight(0);
+            action.clampWhenFinished = true;
+          }
+          rise.setEffectiveTimeScale(-1);
+          actions.sit?.stop(); actions.rise?.stop();
+          actions.sit = sit; actions.rise = rise;
+          sofaSitClip = clip;
+        } catch (error) {
+          console.warn('Mikako: sentada IK no disponible; se conserva sit-stand.', error);
+        }
+      };
       const actionFor = (name: Motion) => actions[name] ?? actions.idle;
       const names = Object.keys(actions) as Motion[];
       for (const name of names) {
@@ -512,7 +537,8 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
         const couchAction = reclineClip && (motion === 'recline' || motion === 'unrecline') ? actionFor(motion) : null;
         const couchProgress = couchAction ? couchAction.time / reclineClip!.duration : 0;
         const chairAction = motion === 'desk-sit' || motion === 'desk-rise' ? actionFor(motion) : null;
-        if (sitClip && !couchAction && !chairAction) correctSeatedPose(MathUtils.smoothstep(w, 0, 1));
+        const sofaAction = sofaSitClip && (motion === 'sit' || motion === 'rise') ? actionFor(motion) : null;
+        if (sitClip && !couchAction && !chairAction && !sofaAction) correctSeatedPose(MathUtils.smoothstep(w, 0, 1));
         if (placement.current) {
           placement.current.position.set(
             position[0] - settings.sitBack * w,
@@ -531,6 +557,10 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           // El giro termina durante la aproximación; tumbarse solo mueve huesos.
           placement.current.rotation.y = room3d.mikako.sitYaw;
         }
+        if (placement.current && sofaAction && sofaSitClip) {
+          placement.current.position.copy(sofaSitRootPosition(sofaAction.time / sofaSitClip.duration, settings.position));
+          placement.current.rotation.y = room3d.mikako.sitYaw;
+        }
         if (placement.current && chairAction && chairClip) {
           placement.current.position.copy(chairRoot(chairAction.time / chairClip.duration, motion === 'desk-rise'));
           placement.current.rotation.y = DESK_CHAIR.facingYaw;
@@ -544,6 +574,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
         model.updateMatrixWorld(true);
       };
       const snap = () => {
+        if (seatRequested && requestedSeat() === 'sit') prepareSofaSit();
         const preserveChair = motion === 'desk-sit' || motion === 'desk-rise';
         const chairTime = preserveChair ? actionFor(motion).time : 0;
         restoreSeatedPose();
@@ -565,7 +596,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
         }
         const action = actionFor(motion);
         action.reset().setEffectiveWeight(1).play();
-        action.time = motion === 'sit' ? sitEnd : motion === 'recline' ? reclineClip!.duration : 0;
+        action.time = motion === 'sit' ? sofaSitClip?.duration ?? sitEnd : motion === 'recline' ? reclineClip!.duration : 0;
         if (preserveChair) action.time = chairTime;
         if (motion === 'desk-rise') action.setEffectiveTimeScale(-1);
         action.paused = motion === 'sit' || motion === 'recline' || motion === 'idle' && !idleClip || latest.current.reduced || !latest.current.active;
@@ -575,6 +606,11 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
         place();
       };
       const transition = (next: Motion, time: number) => {
+        if (next === 'sit' || next === 'rise') prepareSofaSit();
+        const reversingSit = !!sofaSitClip && (motion === 'sit' && next === 'rise' || motion === 'rise' && next === 'sit');
+        if (sofaSitClip && (next === 'sit' || next === 'rise')) {
+          time = reversingSit ? actionFor(motion).time : next === 'sit' ? 0 : sofaSitClip.duration;
+        }
         // Preparar antes de detener acciones: si falla, volver a reposo sin bloquear el movimiento.
         if (next === 'desk-sit' && !chairClip && !chairFailed) {
           chairClip = prepareChairClip();
@@ -624,11 +660,12 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           chairGroup.current.position.z = CHAIR_POSITION[2];
         motion = next;
         actionFor(next).reset().setEffectiveWeight(weights[next]).play();
-        if (next === 'desk-rise') actionFor(next).setEffectiveTimeScale(-1);
+        if (next === 'desk-rise' || next === 'rise' && sofaSitClip) actionFor(next).setEffectiveTimeScale(-1);
         actionFor(next).time = time;
         actionFor(next).paused = next === 'idle' && !idleClip;
         // Entrada e inversión pertenecen al clip: no llevan un fundido paralelo.
-        if (reversingCouch || next === 'recline' || next === 'desk-sit' || reversingChair) {
+        if (reversingCouch || next === 'recline' || next === 'desk-sit' || reversingChair ||
+          reversingSit || sofaSitClip && next === 'sit') {
           for (const name of names) if (name !== next) actionFor(name).stop().setEffectiveWeight(0);
           actionFor(next).setEffectiveWeight(1);
           blend = null;
@@ -677,6 +714,9 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           if (!seatRequested) transition('rise', riseStart);
           return;
         }
+        if (motion === 'rise' && sofaSitClip && seatRequested && requestedSeat() === 'sit') {
+          transition('sit', actionFor('rise').time); return;
+        }
         if (motion === 'rise' && !actionFor('rise').paused) return;
         if (chairRequested && !chairFailed && route.length === 0) {
           const turn = Math.atan2(Math.sin(DESK_CHAIR.facingYaw - yaw), Math.cos(DESK_CHAIR.facingYaw - yaw));
@@ -705,7 +745,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           if (path === null) { seatRequested = false; }
           else if (path.length) { route = path; routePurpose = 'sofa'; }
           else {
-            if (requestedSeat() === 'recline') {
+            if (requestedSeat() === 'recline' || wantsSofaIK()) {
               const turn = Math.atan2(Math.sin(room3d.mikako.sitYaw - yaw), Math.cos(room3d.mikako.sitYaw - yaw));
               if (Math.abs(turn) > .005 && walkClip) {
                 if (!isWalking(motion) || actionFor(motion).paused) transition('walk', 0);
@@ -900,8 +940,8 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
           // Clamp before evaluating the mixer, so the held pose is exactly at the cut.
           if (sitClip) for (const name of ['sit', 'rise'] as const) {
             const action = actionFor(name);
-            const end = name === 'sit' ? sitEnd : riseEnd;
-            if (action.isRunning() && action.time + delta >= end) {
+            const end = sofaSitClip ? name === 'sit' ? sofaSitClip.duration : 0 : name === 'sit' ? sitEnd : riseEnd;
+            if (action.isRunning() && (sofaSitClip && name === 'rise' ? action.time - delta <= end : action.time + delta >= end)) {
               action.time = end;
               action.paused = true;
             }
@@ -950,7 +990,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
               : actionFor('walk').getEffectiveWeight()));
             if (distance > 1e-6) {
               let facing = Math.atan2(dx, dz);
-              if (routePurpose === 'sofa' && requestedSeat() === 'recline' && route.length === 1) {
+              if (routePurpose === 'sofa' && (requestedSeat() === 'recline' || wantsSofaIK()) && route.length === 1) {
                 const turn = couchPhase(COUCH_RECLINE.turnDistance - distance, 0, COUCH_RECLINE.turnDistance);
                 facing += Math.atan2(Math.sin(room3d.mikako.sitYaw - facing), Math.cos(room3d.mikako.sitYaw - facing)) * turn;
               }
@@ -976,7 +1016,7 @@ export function Mikako({ outfit, reduced, taps, playing, active = true, destinat
             yaw += turn * Math.min(1, delta * TURNTABLE_PRESS.turnSpeed);
             oriented = Math.abs(turn) <= MathUtils.degToRad(TURNTABLE_PRESS.facingToleranceDegrees);
           }
-          if (isWalking(motion) && seatRequested && requestedSeat() === 'recline' && route.length === 0) {
+          if (isWalking(motion) && seatRequested && (requestedSeat() === 'recline' || wantsSofaIK()) && route.length === 0) {
             yaw += Math.atan2(Math.sin(room3d.mikako.sitYaw - yaw), Math.cos(room3d.mikako.sitYaw - yaw)) *
               Math.min(1, delta * COUCH_RECLINE.turnSpeed);
           }

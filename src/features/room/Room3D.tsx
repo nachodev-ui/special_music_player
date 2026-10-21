@@ -9,6 +9,7 @@ import { Box, Highlight, Outline, Palette, RoomModel, Shape, Toon, ToonRamp, mak
 import { LAMP_UPRIGHT_ROTATION, melodyCouch, room3d, roomAsset, type RoomObjectConfig, type RoomPalette, type RoomPosterConfig, type Vec3 } from './room3d.config';
 import { roomPhotoAssignments, roomPhotoAsset, type RoomPhotoSlot } from './roomPhotos.config';
 import { useCoverTexture } from './roomTextures';
+import { WindowSky } from './WindowSky';
 import { Mikako, type WalkDestination } from './Mikako';
 import { RoomPlushies } from './RoomPlushies';
 import { measureCouch, type CouchBounds, type CouchRequest } from './mikakoRecline';
@@ -251,27 +252,6 @@ function Record({ player, reduced }: Pick<SceneProps, 'player' | 'reduced'>) {
     </group>
   </group>;
 }
-function WindowSky({ phase, weather }: Pick<SceneProps, 'phase' | 'weather'>) {
-  const palette = useContext(Palette);
-  const night = phase === 'night';
-  const color = { dawn: '#efb5bb', day: '#c9e4e8', sunset: '#edb294', night: '#656888' }[phase];
-  const label = weather?.code ?? 0;
-  const snow = label >= 71 && label <= 77 || label === 85 || label === 86;
-  const rain = label >= 51 && !snow;
-  const cloudy = !!weather && (weather.cloudCover > 35 || label > 0);
-  return <group>
-    <mesh position={[0, .8, .09]}><planeGeometry args={[1.95, 1.48]} /><meshBasicMaterial color={color} /></mesh>
-    <mesh position={[-.58, 1.19, .11]}><circleGeometry args={[night ? .13 : .19, 20]} /><meshBasicMaterial color={night ? '#fff4d4' : '#ffe1a1'} /></mesh>
-    {night && [[.2, 1.3], [.68, 1.06], [-.25, .75]].map(([x, y], i) => <mesh key={i} position={[x, y, .12]}><circleGeometry args={[.018, 6]} /><meshBasicMaterial color="#fff4d4" /></mesh>)}
-    {cloudy && [-.43, .38].map((x, i) => <group key={x} position={[x, 1.03 - i * .3, .14]}>
-      <Shape scale={[1.7, .65, .24]} color={night ? '#85839b' : palette.surface}><sphereGeometry args={[.22, 12, 8]} /></Shape>
-    </group>)}
-    {(rain || snow) && Array.from({ length: 12 }, (_, i) => <mesh key={i} position={[-.8 + (i % 4) * .5, .33 + Math.floor(i / 4) * .33, .2]} rotation={[0, 0, -.22]}>
-      <boxGeometry args={snow ? [.025, .025, .01] : [.012, .12, .01]} /><meshBasicMaterial color={snow ? '#fffefb' : '#7891ae'} />
-    </mesh>)}
-  </group>;
-}
-
 // The furniture is authored here so its upholstery, trim and hardware keep their own colors.
 function SoftBox({ size, radius = .06, color, position, rotation }: {
   size: Vec3; radius?: number; color: string; position?: Vec3; rotation?: Vec3;

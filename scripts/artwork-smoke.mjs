@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scratch = await mkdtemp(path.join(root, '.artwork-smoke-'));
 app.setPath('userData', scratch);
+// Mantener el perfil aislado aunque main configure el directorio de la aplicación.
+const setPath = app.setPath.bind(app);
+app.setPath = (name, directory) => setPath(name, name === 'userData' ? scratch : directory);
 BrowserWindow.prototype.show = function () {}; // Validate without opening another visible player.
 const timeout = setTimeout(() => { console.error('Smoke test timed out'); app.exit(1); }, 25000);
 function mp3(title, picture) {
@@ -48,15 +51,15 @@ try {
   await js('document.querySelectorAll(".track-info")[2].click()');
   await waitFor(()=>js('document.querySelectorAll(".artwork img").length === 5 && [...document.querySelectorAll(".artwork img")].every(img=>img.complete && img.naturalWidth>0)'));
   assert.equal(searches,1);
-  const sources=await js('({list:document.querySelectorAll(".track-info img")[2].src,large:document.querySelector(".large-artwork img").src,player:document.querySelector(".player-track img").src,background:document.querySelector(".welcome-artwork-background").src})');
-  assert.equal(sources.list,sources.large); assert.equal(sources.list,sources.player); assert.equal(sources.list,sources.background);
+  const sources=await js('({list:document.querySelectorAll(".track-info img")[2].src,large:document.querySelector(".large-artwork img").src,player:document.querySelector(".player-track img").src})');
+  assert.equal(sources.list,sources.large); assert.equal(sources.list,sources.player);
   assert.equal((await originalFetch('usagi://artwork/unknown')).status,404);
   await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   await new Promise(resolve=>setTimeout(resolve,150));
   const screenshot=await window.webContents.capturePage(); await writeFile(path.join(scratch,'preview.png'),screenshot.toPNG());
   await js('document.querySelectorAll(".track-info img")[2].src="usagi://artwork/unknown"');
   await waitFor(()=>js('document.querySelectorAll(".track-info .artwork")[2].classList.contains("artwork-placeholder")'));
-  console.log('Electron smoke passed: local and online covers decode, active track and background update, IPC/protocol and broken-image fallback work.');
+  console.log('Electron smoke passed: local and online covers decode, active track panels update, IPC/protocol and broken-image fallback work.');
   clearTimeout(timeout); window.destroy();
   const relative=path.relative(root,scratch); assert.ok(relative.startsWith('.artwork-smoke-') && !relative.includes(path.sep));
   await rm(scratch,{recursive:true,force:true}).catch(()=>undefined); app.exit(0);

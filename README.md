@@ -31,7 +31,9 @@ No hay scripts `test` ni `lint` en `package.json`; el comando de lint queda por 
 
 ## Entregar el regalo en Windows
 
-Ejecuta `npm run gift:dist`. Se crea `release/Sukis-Room-Regalo-0.1.0.exe`: comparte ese único archivo. La persona solo necesita Windows de 64 bits y abrirlo con doble clic; no necesita Node, npm, instalar la aplicación ni elegir una carpeta de música.
+Ejecuta `npm run gift:dist`. Se crea `release/Sukis-Room-Regalo-0.1.1.exe`: comparte ese único archivo. La persona solo necesita Windows de 64 bits y abrirlo con doble clic; no necesita Node, npm, instalar la aplicación ni elegir una carpeta de música.
+
+La última versión publicada se descarga desde [GitHub Releases](https://github.com/nachodev-ui/special_music_player/releases/latest). Para actualizar, cierra la versión anterior, sustituye su ejecutable por el nuevo y ábrelo con doble clic, usando el mismo usuario de Windows. Los datos se conservan en `%APPDATA%/Sukis Room Gift`; no borres esa carpeta. Las canciones y dedicatorias incluidas se importan solo en el primer inicio de cada perfil.
 
 El ejecutable incluye una copia de todas las canciones de la biblioteca actual y las referenciadas por sus playlists, el orden de las playlists, sus portadas, las dedicatorias de esas canciones, favoritas, tema, volumen, ropa guardada, fotos y assets del cuarto. Las portadas y letras ya descargadas también se incluyen. No se exportan cookies, credenciales ni el perfil completo de Chromium. El exportador lee una copia aislada del almacenamiento local; usa el origen de desarrollo si existe. Para exportar las preferencias del modo `npm start`, establece `USAGI_GIFT_ORIGIN=file` antes de compilar.
 
